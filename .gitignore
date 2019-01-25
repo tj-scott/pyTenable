@@ -11,3 +11,5 @@ env_builder
 /manual.sh
 /.coverage
 /test_certs
+/local.settings.sh
+/.python-version

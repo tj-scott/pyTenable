@@ -70,8 +70,18 @@ def test_scanner_details_permissionerror(stdapi, scanner):
 
 @pytest.mark.vcr()
 def test_scanner_details(api, scanner):
-    check = api.scanners.details(scanner['id'])
-    assert check['id'] == scanner['id']
+    s = api.scanners.details(scanner['id'])
+    check(s, 'id', int)
+    check(s, 'uuid', 'scanner-uuid')
+    check(s, 'name', str)
+    check(s, 'type', str)
+    check(s, 'status', str)
+    check(s, 'scan_count', int)
+    check(s, 'engine_version', str)
+    check(s, 'platform', str)
+    check(s, 'loaded_plugin_set', str)
+    check(s, 'owner', str)
+    check(s, 'pool', bool)
 
 @pytest.mark.vcr()
 def test_scanner_edit_id_typeerror(api):
@@ -195,3 +205,17 @@ def test_link_state_permissionerror(stdapi, scanner):
 @pytest.mark.vcr()
 def test_link_state(api, scanner):
     api.scanners.toggle_link_state(scanner['id'], True)
+
+@pytest.mark.vcr()
+def test_scanners_get_permissions(api, scanner):
+    perms = api.scanners.get_permissions(scanner['id'])
+    assert isinstance(perms, list)
+    for p in perms:
+        check(p, 'type', str)
+        check(p, 'permissions', int)
+
+@pytest.mark.vcr()
+def test_scanner_edit_permissions(api, scanner, user):
+    api.scanners.edit_permissions(scanner['id'], 
+        {'type': 'default', 'permissions': 16},
+        {'type': 'user', 'id': user['id'], 'permissions': 16})
