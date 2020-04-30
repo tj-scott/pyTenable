@@ -2,21 +2,25 @@
 exports
 =======
 
-The following methods allow for interaction into the Tenable.io 
-`exports <https://cloud.tenable.com/api#/resources/exports>`_ 
-API endpoints.
+The following methods allow for interaction into the Tenable.io
+:devportal:`exports <exports>` API endpoints.
 
 Methods available on ``tio.exports``:
 
 .. rst-class:: hide-signature
 .. autoclass:: ExportsAPI
 
-    .. automethod:: vulns
     .. automethod:: assets
+    .. automethod:: vulns
 '''
-from .base import TIOEndpoint, APIResultsIterator
+from .base import TIOEndpoint, APIResultsIterator, UnexpectedValueError
 from tenable.errors import TioExportsError
-import time
+from ipaddress import IPv4Network, AddressValueError
+try:
+    from json.decoder import JSONDecodeError
+except ImportError:
+    JSONDecodeError = ValueError
+import time, ipaddress, sys
 
 class ExportsIterator(APIResultsIterator):
     '''
@@ -25,62 +29,94 @@ class ExportsIterator(APIResultsIterator):
     minimal effort in the calling application.
     '''
     def __init__(self, api, **kw):
-        self._type = None
-        self._uuid = None
-        self._chunks = list()
-        self._processed = list()
+        self.type = None
+        self.uuid = None
+        self.chunk_id = None
+        self.chunks = list()
+        self.processed = list()
         APIResultsIterator.__init__(self, api, **kw)
+
+    def _process_page(self, page_data):
+        '''
+        Processes a page of data
+        '''
+        self.page = page_data
 
     def _get_page(self):
         '''
         Get the next chunk
         '''
-        def get_status():       
+        def get_status():
             # Query the API for the status of the export.
-            status = self._api.get('{}/export/{}/status'.format(self._type, self._uuid)).json()
+            status = self._api.get('{}/export/{}/status'.format(self.type, self.uuid)).json()
 
             # We need to get the list of chunks that we haven't completed yet and are
             # available for download.
-            unfinished = [c for c in status['chunks_available'] if c not in self._processed]
-            
+            unfinished = [c for c in status['chunks_available'] if c not in self.processed]
+
             # Add the chunks_unfinished key with the unfinished list as the
             # associated value and then return the status to the caller.
             status['chunks_unfinished'] = unfinished
 
-            # if there are no more chunks to process and the export status is 
+            # if there are no more chunks to process and the export status is
             # set to finished, then we will break the iteration.
-            if (status['status'] == 'FINISHED' 
+            if (status['status'] == 'FINISHED'
                     and len(status['chunks_unfinished']) < 1):
                 raise StopIteration()
 
             if status['status'] == 'ERROR':
-                raise TioExportsError(self._type, self._uuid)
+                raise TioExportsError(self.type, self.uuid)
 
             return status
 
         # If there are no chunks in our local queue, then we will need to query
         # the status API for more chunks to to work on.
-        if len(self._chunks) < 1:
+        if len(self.chunks) < 1:
             status = get_status()
 
-            # if the export is still processing, but there aren't any chunks for 
-            # us to process yet, then we will wait here in a loop and call for 
+            backoff_counter = 1
+            # if the export is still processing, but there aren't any chunks for
+            # us to process yet, then we will wait here in a loop and call for
             # status once a second until we get something else to work on.
             while len(status['chunks_unfinished']) < 1:
-                time.sleep(1)   # wait 1 second
+                backoff_counter += 1
+                time.sleep(backoff_counter if backoff_counter < 30 else 30)
                 status = get_status()
 
             # now that we have some chunks to work on, lets refresh the local
             # chunk cache and continue.
-            self._chunks = status['chunks_unfinished']
+            self.chunks = status['chunks_unfinished']
 
-        # now to take the first chunk off the local queue, move it to the 
+        # now to take the first chunk off the local queue, move it to the
         # processed list, and then set store the results to the page attribute.
-        chunk_id = self._chunks[0]
-        self._chunks.pop(0)
-        self._processed.append(chunk_id)
-        self.page = self._api.get('{}/export/{}/chunks/{}'.format(
-            self._type, self._uuid, chunk_id)).json()
+        self.chunk_id = self.chunks[0]
+        self.chunks.pop(0)
+        self.processed.append(self.chunk_id)
+
+        # We will attempt to download a chunk of data and convert it into JSON.
+        # If the conversion fails, then we will increment our own retry counter
+        # and attempt to download the chunk again.  After 3 attempts, we will
+        # assume that the chunk is dead and simply expire the chunk id.
+        downloaded = False
+        counter = 0
+        while not downloaded and counter <= 3:
+            try:
+                self.page = self._api.get('{}/export/{}/chunks/{}'.format(
+                    self.type, self.uuid, self.chunk_id)).json()
+                downloaded = True
+            except JSONDecodeError as err:
+                self._log.warn('Invalid Chunk {} on export {}'.format(
+                               str(self.chunk_id), str(self.uuid)))
+                self.page = list()
+                counter += 1
+
+        # If the chunk of data is empty, then we will call ourselves to get the
+        # next page of data.  This allows us to properly handle empty chunks of
+        # data.
+        if len(self.page) < 1:
+            self._log.warn('Empty Chunk {} on Export {}'.format(
+                           str(self.chunk_id), str(self.uuid)))
+            self._get_page()
 
     def next(self):
         '''
@@ -105,7 +141,7 @@ class ExportsAPI(TIOEndpoint):
         '''
         Initiate an vulnerability export.
 
-        `exports: vulns-request-export <https://cloud.tenable.com/api#/resources/exports/vulns-request-export>`_
+        :devportal:`exports: vulns-request-export <exports-vulns-request-export>`
 
         Args:
             cidr_range (str, optional):
@@ -115,25 +151,34 @@ class ExportsAPI(TIOEndpoint):
                 Specifies the earliest time for a vulnerability to have been
                 discovered.  Format is a unix timestamp integer.
             last_fixed (int, optional):
-                Specifies the earliest time that vulnerabilitis may have been
+                Specifies the earliest time that vulnerabilities may have been
                 fixed.  Format is a unix timestamp integer.
             last_found (int, optional):
                 Specifies the earliest time that a vulnerability may have been
                 last seen.  Format is a unix timestamp integer.
             num_assets (int, optional):
                 Specifies the number of assets returned per-chunk.  If nothing is
-                specified, it will default to 50 assets.
+                specified, it will default to 500 assets.
             plugin_family (list, optional):
-                list of plugin families to restrict the export to.  values are
-                interpreted with an insensitivity to case.
+                list of plugin families to restrict the export to.  Please note
+                that this parameter's values are case sensitive.
             severity (list, optional):
                 list of severities to include as part of the export.  Supported
                 values are `info`, `low`, `medium`, `high`, and `critical`.
             since (int, optional):
-                Returned results will be bounded to only respond with objects
-                that are new or updated between this specified value and current.
-                If no since filter is specified, then the results will be unbounded
-                and return all results.
+                Returned results will be bounded based on the state of the
+                vulnerability instance detailed below.  This parameter expects a
+                unix timestamp.
+
+                * Vulns in the **open** state are bounded by ``first_found``.
+                * Vulns in the **reopened** state are bounded by ``last_found``.
+                * Vulns in the **fixed** state are bounded by ``last_fixed``.
+
+                In short it'll return active vulnerabilities based on when they
+                were first discovered, and fixed and resurfaced vulnerabilities
+                based on when they were last observed.  The idea is to relay
+                state changes of a vulnerability and use a singular export to
+                track all of these state changes.
             state (list, optional):
                 list of object states to be returned.  Supported values are
                 `open`, `reopened`, and `fixed`.
@@ -141,9 +186,16 @@ class ExportsAPI(TIOEndpoint):
                 List of tag key-value pairs that must be associated to the
                 vulnerability data to be returned.  Key-value pairs are tuples
                 ``('key', 'value')`` and are case-sensitive.
+            uuid (str, optional):
+                To re-request an iterator based off of an existing export, pass
+                the UUID of the export to bypass the initial request and instead
+                use the UUID passed to build the export iterator.
+            vpr (dict, optional):
+                Restricts the results to the
 
         Returns:
-            ExportIterator: an iterator to walk through the results.
+            :obj:`ExportIterator`:
+                An iterator to walk through the results.
 
         Examples:
             Export all of the vulnerability data:
@@ -157,16 +209,27 @@ class ExportsAPI(TIOEndpoint):
             >>> for vuln in tio.exports.vulns(severity=['critical']):
             ...     pprint(vuln)
         '''
+        uuid = kw.get('uuid')
         payload = {'filters': dict()}
 
-        payload['num_assets'] = str(self._check('num_assets', 
-            kw['num_assets'] if 'num_assets' in kw else None, int, default=50))
+        # Instead of a long and drawn-out series of if statements for all of
+        # these integer filters, lets instead just loop through all of them
+        # instead.  As they all have the same logic, there isn't any reason
+        # not to shorten up the madness.
+        for option in ['since', 'first_found', 'last_found',
+                       'last_fixed', 'first_scan_time',
+                       'last_authenticated_scan_time', 'last_assessed']:
+            if option in kw and self._check(option, kw[option], int):
+                payload['filters'][option] = kw[option]
 
-        if 'severity' in kw and self._check('severity', kw['severity'], list, 
+        payload['num_assets'] = str(self._check('num_assets',
+            kw['num_assets'] if 'num_assets' in kw else None, int, default=500))
+
+        if 'severity' in kw and self._check('severity', kw['severity'], list,
                 choices=['info', 'low', 'medium', 'high', 'critical'], case='lower'):
             payload['filters']['severity'] = kw['severity']
 
-        if 'state' in kw and self._check('state', kw['state'], list, 
+        if 'state' in kw and self._check('state', kw['state'], list,
                 choices=['OPEN', 'REOPENED', 'FIXED'], case='upper'):
             payload['filters']['state'] = kw['state']
 
@@ -174,31 +237,37 @@ class ExportsAPI(TIOEndpoint):
                 'plugin_family', kw['plugin_family'], list):
             payload['filters']['plugin_family'] = kw['plugin_family']
 
-        if 'since' in kw and self._check('since', kw['since'], int):
-            payload['filters']['since'] = kw['since']
-
         if 'cidr_range' in kw and self._check('cidr_range', kw['cidr_range'], str):
-            payload['filters']['cidr_range'] = kw['cidr_range']
+            cidr = kw['cidr_range']
 
-        if 'first_found' in kw and self._check('first_found', kw['first_found'], int):
-            payload['filters']['first_found'] = kw['first_found']
+            # if the python version is less than 3, then we will need to
+            # recast it as a unicode string.
+            if sys.version_info < (3, 0):
+                cidr = unicode(cidr)
 
-        if 'last_found' in kw and self._check('last_found', kw['last_found'], int):
-            payload['filters']['last_found'] = kw['last_found']
+            # Validate the cidr_range attribute as an actual CIDR range.  If it
+            # returns an error back to us, then we can safely assume that it's
+            # not a valid CIDR and throw a UnexpectedValueError informing the
+            # caller of the mistake.
+            try:
+                network = IPv4Network(cidr)
+            except ValueError:
+                raise UnexpectedValueError('{} is not a valid CIDR'.format(cidr))
 
-        if 'last_fixed' in kw and self._check('last_fixed', kw['last_fixed'], int):
-            payload['filters']['last_fixed'] = kw['last_fixed']
+            # Assuming everything has passed, then we will add the filter to the
+            # filters dictionary.
+            payload['filters']['cidr_range'] = str(network)
 
         if 'tags' in kw and self._check('tags', kw['tags'], list):
             # if any tags were specified, then we will iterate through the list
-            # and handle each 
+            # and handle each
             for tag in kw['tags']:
                 # check to see if the tag is a tuple and also construct the
                 # filter name.
                 self._check('tags:tag', tag, tuple)
                 name = 'tag.{}'.format(
                     self._check('tag:name', tag[0], str))
-                
+
                 # If the tag filter doesn't yet exist, then we need to create it
                 # and associate an empty list to it.
                 if name not in payload['filters']:
@@ -208,21 +277,25 @@ class ExportsAPI(TIOEndpoint):
                 payload['filters'][name].append(
                     self._check('tag:value', tag[1], str))
 
-        uuid = self._api.post('vulns/export', json=payload).json()['export_uuid']
-        self._api._log.debug('Initiated vuln export {}'.format(uuid))
+        if 'vpr' in kw and self._check('vpr', kw['vpr'], dict):
+            payload['filters']['vpr_score'] = kw['vpr']
 
-        return ExportsIterator(self._api, _type='vulns', _uuid=uuid)
+        if not uuid:
+            uuid = self._api.post(
+                'vulns/export', json=payload).json()['export_uuid']
+            self._api._log.debug('Initiated vuln export {}'.format(uuid))
+        return ExportsIterator(self._api, type='vulns', uuid=uuid)
 
     def assets(self, **kw):
         '''
         Export asset data from Tenable.io.
 
-        `exports: assets-request-export <https://cloud.tenable.com/api#/resources/exports/assets-request-export>`_
+        :devportal:`exports: assets-request-export <exports-assets-request-export>`
 
         Args:
             chunk_size (int, optional):
                 Specifies the number of objects returned per-chunk.  If nothing is
-                specified, it will default to 50 objects.
+                specified, it will default to 1000 objects.
             created_at (int, optional):
                 Returns all assets created after the specified unix timestamp.
             updated_at (int, optional):
@@ -257,9 +330,14 @@ class ExportsAPI(TIOEndpoint):
                 List of tag key-value pairs that must be associated to the
                 asset data to be returned.  Key-value pairs are tuples
                 ``('key', 'value')`` and are case-sensitive.
+            uuid (str, optional):
+                To re-request an iterator based off of an existing export, pass
+                the UUID of the export to bypass the initial request and instead
+                use the UUID passed to build the export iterator.
 
         Returns:
-            ExportIterator: an iterator to walk through the results.
+            :obj:`ExportIterator`:
+                An iterator to walk through the results.
 
         Examples:
             Export all of the asset data within Tenable.io:
@@ -275,21 +353,22 @@ class ExportsAPI(TIOEndpoint):
             >>> for asset in tio.exports.assets(updated_at=last_week):
             ...     pprint(asset)
         '''
+        uuid = kw.get('uuid')
         payload = {'filters': dict()}
-        payload['chunk_size'] = self._check('chunk_size', 
+        payload['chunk_size'] = self._check('chunk_size',
             kw['chunk_size'] if 'chunk_size' in kw else None,
-            int, default=100)
+            int, default=1000)
 
-        
+
         # Instead of a long and drawn-out series of if statements for all of
         # these integer filters, lets instead just loop through all of them
         # instead.  As they all have the same logic, there isn't any reason
         # not to shorten up the madness.
-        for option in ['created_at', 'updated_at', 'terminated_at', 
-                       'deleted_at', 'first_scan_time', 
+        for option in ['created_at', 'updated_at', 'terminated_at',
+                       'deleted_at', 'first_scan_time',
                        'last_authenticated_scan_time', 'last_assessed']:
-            if option in kw and self._check(option, kw[option], int):
-                payload['filters'][option] = kw[option]
+            if option in kw:
+                payload['filters'][option] = self._check(option, kw[option], int)
 
         # Lets to the same thing we did above for integer checks for the boolean
         # ones as well.
@@ -302,14 +381,14 @@ class ExportsAPI(TIOEndpoint):
 
         if 'tags' in kw and self._check('tags', kw['tags'], list):
             # if any tags were specified, then we will iterate through the list
-            # and handle each 
+            # and handle each
             for tag in kw['tags']:
                 # check to see if the tag is a tuple and also construct the
                 # filter name.
                 self._check('tags:tag', tag, tuple)
                 name = 'tag.{}'.format(
                     self._check('tag:name', tag[0], str))
-                
+
                 # If the tag filter doesn't yet exist, then we need to create it
                 # and associate an empty list to it.
                 if name not in payload['filters']:
@@ -319,7 +398,8 @@ class ExportsAPI(TIOEndpoint):
                 payload['filters'][name].append(
                     self._check('tag:value', tag[1], str))
 
-        uuid = self._api.post('assets/export', json=payload).json()['export_uuid']
-        self._api._log.debug('Initiated asset export {}'.format(uuid))
-
-        return ExportsIterator(self._api, _type='assets', _uuid=uuid)
+        if not uuid:
+            uuid = self._api.post(
+                'assets/export', json=payload).json()['export_uuid']
+            self._api._log.debug('Initiated asset export {}'.format(uuid))
+        return ExportsIterator(self._api, type='assets', uuid=uuid)

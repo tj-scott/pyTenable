@@ -2,9 +2,8 @@
 agents
 ======
 
-The following methods allow for interaction into the Tenable.io 
-`agents <https://cloud.tenable.com/api#/resources/agents>`_ 
-API endpoints.
+The following methods allow for interaction into the Tenable.io
+:devportal:`agents <agents>` API endpoints.
 
 Methods available on ``tio.agents``:
 
@@ -30,39 +29,23 @@ class AgentsIterator(TIOIterator):
 
     Attributes:
         count (int): The current number of records that have been returned
-        page (list): 
+        page (list):
             The current page of data being walked through.  pages will be
             cycled through as the iterator requests more information from the
             API.
         page_count (int): The number of record returned from the current page.
-        total (int): 
+        total (int):
             The total number of records that exist for the current request.
     '''
-    def _get_data(self):
-        '''
-        Request the next page of data
-        '''
-        # The first thing that we need to do is construct the query with the
-        # current offset and limits
-        query = self._query
-        query['limit'] = self._limit
-        query['offset'] = self._offset
+    pass
 
-        # Lets make the actual call at this point.
-        resp = self._api.get(
-            'scanners/{}/agents'.format(self._scanner_id), params=query).json()
-
-        # Lastly we need to return the data from the response and the data key
-        # so that _get_page() knows where the information is stored.
-        return resp, 'agents'
-            
 
 class AgentsAPI(TIOEndpoint):
     def list(self, *filters, **kw):
         '''
         Get the listing of configured agents from Tenable.io.
 
-        `agents: list <https://cloud.tenable.com/api#/resources/agents/list>`_
+        :devportal:`agents: list <agents-list>`
 
         Args:
             *filters (tuple, optional):
@@ -74,14 +57,14 @@ class AgentsAPI(TIOEndpoint):
                     - ``('distro', 'match', 'win')``
                     - ``('name', 'nmatch', 'home')``
 
-                As the filters mat change and sortable fields mat change over
+                As the filters may change and sortable fields may change over
                 time, it's highly recommended that you look at the output of
                 the `filters:agents-filters <https://cloud.tenable.com/api#/resources/filters/agents-filters>`_
                 endpoint to get more details.
             filter_type (str, optional):
                 The filter_type operator determines how the filters are combined
                 together.  ``and`` will inform the API that all of the filter
-                conditions must be met for an agent to be returned, whereas 
+                conditions must be met for an agent to be returned, whereas
                 ``or`` would mean that if any of the conditions are met, the
                 agent record will be returned.
             limit (int, optional):
@@ -100,7 +83,7 @@ class AgentsAPI(TIOEndpoint):
                 to.
 
         Returns:
-            AgentsIterator: 
+            :obj:`AgentsIterator`:
                 An iterator that handles the page management of the requested
                 records.
 
@@ -178,24 +161,26 @@ class AgentsAPI(TIOEndpoint):
             _limit=limit,
             _offset=offset,
             _pages_total=pages,
-            _scanner_id=scanner_id,
-            _query=query
+            _query=query,
+            _path='scanners/{}/agents'.format(scanner_id),
+            _resource='agents'
         )
 
     def details(self, agent_id, scanner_id=1):
         '''
         Retrieves the details of an agent.
 
-        `agents: get <https://cloud.tenable.com/api#/resources/agents/get>`_
+        :devportal:`agents: get <agents-get>`
 
         Args:
-            agent_id (int): 
+            agent_id (int):
                 The identifier of the agent.
-            scanner_id (int, optional): 
+            scanner_id (int, optional):
                 The identifier of the scanner.  Default is 1.
 
         Returns:
-            dict: The agent dictionary record.
+            :obj:`dict`:
+                The agent dictionary record.
 
         Examples:
             >>> agent = tio.agents.details(1)
@@ -211,7 +196,7 @@ class AgentsAPI(TIOEndpoint):
         '''
         Unlink one or multiple agents from the Tenable.io instance.
 
-        `agents: delete <https://cloud.tenable.com/api#/resources/agents/delete>`_
+        :devportal:`agents: delete <agents-delete>`
 
         Args:
             *agent_ids (int):
@@ -220,8 +205,10 @@ class AgentsAPI(TIOEndpoint):
                 The identifier the scanner that the agent communicates to.
 
         Returns:
-            None: A singular agent was successfully unlinked.
-            dict: A task record if multiple agents were requested to be unlinked.
+            :obj:`dict` or :obj:`None`:
+                If unlinking a singular agent, a :obj:`None` response will be
+                returned.  If unlinking multiple agents, a :obj:`dict` response
+                will be returned with a task record.
 
         Examples:
             Unlink a singular agent:
@@ -241,7 +228,7 @@ class AgentsAPI(TIOEndpoint):
             # API
             self._api.delete('scanners/{}/agents/{}'.format(
                 self._check('scanner_id', scanner_id, int),
-                self._check('agent_id', agent_ids[0], int)    
+                self._check('agent_id', agent_ids[0], int)
             ))
         else:
             return self._api.post('scanners/{}/agents/_bulk/unlink'.format(
@@ -252,14 +239,15 @@ class AgentsAPI(TIOEndpoint):
         '''
         Retrieves the current status of the task requested.
 
-        `bulk-operations: bulk-agent-status <https://cloud.tenable.com/api#/resources/bulk-operations/bulk-agent-status>`_
+        :devportal:`bulk-operations: bulk-agent-status <bulk-task-agent-status>`
 
         Args:
             task_uuid (str): The id of the agent
             scanner_id (int, optional): The id of the scanner
 
         Returns:
-            dict: Task resource
+            :obj:`dict`:
+                Task resource
 
         Examples:
             >>> item = tio.agents.unlink(21, 22, 23)

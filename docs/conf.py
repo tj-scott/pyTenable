@@ -12,7 +12,15 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-autodoc_mock_imports = ['lxml', 'dateutil', 'dateutil.parser']
+autodoc_mock_imports = [
+    'lxml',
+    'dateutil',
+    'dateutil.parser',
+    'semver',
+    'docker',
+    'defusedxml',
+    'ipaddress',
+]
 
 import os, sys, datetime
 sys.path.insert(0, os.path.abspath('..'))
@@ -49,6 +57,8 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
     'sphinx.ext.napoleon',
+    'sphinx.ext.extlinks',
+    #'sphinx_markdown_builder',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -96,8 +106,12 @@ html_theme = 'alabaster'
 html_theme_options = {
     'description': 'A Python library for Tenable application APIs',
     'fixed_sidebar': False,
+    'logo': 'logo.png',
+    'touch_icon': 'logo.png',
+    'logo_name': 'pyTenable',
     'github_user': 'tenable',
     'github_repo': 'pyTenable',
+    'github_button': True,
     'travis_button': True,
     'analytics_id': 'UA-131275974-1',
 }
@@ -186,4 +200,12 @@ texinfo_documents = [
 # -- Options for intersphinx extension ---------------------------------------
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'https://docs.python.org/': None}
+intersphinx_mapping = {
+    'https://docs.python.org/': None,
+    'requests': ('http://docs.python-requests.org/en/master/', None)
+}
+
+extlinks = {
+    'devportal': ('https://developer.tenable.com/reference#%s', 'devportal'),
+    'sc-api': ('https://docs.tenable.com/sccv/api/%s', 'sc-api'),
+}

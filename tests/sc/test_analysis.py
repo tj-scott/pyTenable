@@ -3,7 +3,7 @@ from ..checker import check, single
 import pytest
 
 def test_analysis_asset_excpansion_simple(sc):
-    resp = sc.analysis._expass(('or', 1, 2))
+    resp = sc.analysis._combo_expansion(('or', 1, 2))
     assert resp == {
         'operator': 'union',
         'operand1': {'id': '1'},
@@ -11,7 +11,8 @@ def test_analysis_asset_excpansion_simple(sc):
     }
 
 def test_analysis_asset_expansion_complex(sc):
-    resp = sc.analysis._expass(('or', ('and', 1, 2), ('not', ('or', 3, 4))))
+    resp = sc.analysis._combo_expansion(
+        ('or', ('and', 1, 2), ('not', ('or', 3, 4))))
     assert resp == {
         'operator': 'union',
         'operand1': {
@@ -32,9 +33,58 @@ def test_analysis_asset_expansion_complex(sc):
 def test_analysis_query_constructor_simple(sc):
     resp = sc.analysis._query_constructor(
         ('filter1', 'operator1', 'value1'),
-        ('filter2', 'operator2', 'value2'), 
-        tool='tool_test', 
-        analysis_type='type_test')
+        ('filter2', 'operator2', 'value2'),
+        tool='tool_test',
+        type='type_test')
+    assert resp == {
+        'tool': 'tool_test',
+        'query': {
+            'tool': 'tool_test',
+            'type': 'type_test',
+            'filters': [{
+                'filterName': 'filter1',
+                'operator': 'operator1',
+                'value': 'value1',
+            }, {
+                'filterName': 'filter2',
+                'operator': 'operator2',
+                'value': 'value2'
+            }]
+        }
+    }
+
+def test_analysis_query_constructor_replace(sc):
+    resp = sc.analysis._query_constructor(
+        ('filter1', 'operator1', 'badvalue'),
+        ('filter1', 'operator1', 'value1'),
+        ('filter2', 'operator2', 'value2'),
+        tool='tool_test',
+        type='type_test')
+    assert resp == {
+        'tool': 'tool_test',
+        'query': {
+            'tool': 'tool_test',
+            'type': 'type_test',
+            'filters': [{
+                'filterName': 'filter1',
+                'operator': 'operator1',
+                'value': 'value1',
+            }, {
+                'filterName': 'filter2',
+                'operator': 'operator2',
+                'value': 'value2'
+            }]
+        }
+    }
+
+def test_analysis_query_constructor_remove(sc):
+    resp = sc.analysis._query_constructor(
+        ('filter3', 'operator1', 'badvalue'),
+        ('filter1', 'operator1', 'value1'),
+        ('filter2', 'operator2', 'value2'),
+        ('filter3', None, None),
+        tool='tool_test',
+        type='type_test')
     assert resp == {
         'tool': 'tool_test',
         'query': {
@@ -54,7 +104,7 @@ def test_analysis_query_constructor_simple(sc):
 
 def test_analysis_query_constructor_asset(sc):
     resp = sc.analysis._query_constructor(('asset', '~', ('or', 1, 2)),
-        tool='tool', analysis_type='type')
+        tool='tool', type='type')
     assert resp == {
         'tool': 'tool',
         'query': {
@@ -71,6 +121,8 @@ def test_analysis_query_constructor_asset(sc):
             }]
         }
     }
+
+
 
 @pytest.mark.vcr()
 def test_analysis_vulns_cceipdetail_tool(sc):

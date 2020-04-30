@@ -2,12 +2,11 @@
 editor
 ======
 
-The following methods allow for interaction into the Tenable.io 
-`editor <https://cloud.tenable.com/api#/resources/editor>`_ 
-API endpoints.  While these endpoints are pythonized for completeness within
-pyTenable, the Editor API endpoints should generally be avoided unless absolutely
-necessary.  These endpoints are used to drive the Tenable.io UI, and not
-designed to be used programmatically.
+The following methods allow for interaction into the Tenable.io
+:devportal:`editor <editor>` API endpoints.  While these endpoints are
+pythonized for completeness within pyTenable, the Editor API endpoints should
+generally be avoided unless absolutely necessary.  These endpoints are used to
+drive the Tenable.io UI, and not designed to be used programmatically.
 
 Methods available on ``io.editor``:
 
@@ -16,54 +15,19 @@ Methods available on ``io.editor``:
 
     .. automethod:: audits
     .. automethod:: details
-    .. automethod:: edit
-    .. automethod:: list
+    .. automethod:: obj_details
     .. automethod:: plugin_description
+    .. automethod:: template_details
+    .. automethod:: template_list
 '''
 from .base import TIOEndpoint
-from tenable.utils import dict_merge
+from tenable.utils import dict_merge, policy_settings
 from io import BytesIO
 
 class EditorAPI(TIOEndpoint):
-    def parse_vals(self, item):
-        '''
-        Recursive function to attempt to pull out the various settings from
-        the scan editor.
-        '''
-        resp = dict()
-        if 'id' in item and ('default' in item
-            or ('type' in item and item['type'] in [
-                'file', 
-                'checkbox', 
-                'entry', 
-                'medium-fixed-entry'])):
-            # if we find both an 'id' and a 'default' attribute, or if we find
-            # a 'type' attribute matching one of the known attribute types, then
-            # we will parse out the data and append it to the response dictionary 
-            if not 'default' in item:
-                item['default'] = ""
-            resp[item['id']] = item['default']
-
-        for key in item.keys():
-            # here we will attempt to recurse down both a list of sub-
-            # documents and an explicitly defined sub-document within the
-            # editor data-structure.
-            if key == 'modes':
-                continue
-            if (isinstance(item[key], list) 
-              and len(item[key]) > 0 
-              and isinstance(item[key][0], dict)):
-                for i in item[key]:
-                    resp = dict_merge(resp, self.parse_vals(i))
-            if isinstance(item[key], dict):
-                resp = dict_merge(resp, self.parse_vals(item[key]))
-
-        # Return the key-value pair.
-        return resp
-
     def parse_creds(self, data):
         '''
-        Walks through the credential data list and returns the configured 
+        Walks through the credential data list and returns the configured
         settings for a given scan policy/scan
         '''
         resp = dict()
@@ -72,7 +36,7 @@ class EditorAPI(TIOEndpoint):
                 if len(item['instances']) > 0:
                     for i in item['instances']:
                         # Get the settings from the inputs.
-                        settings = self.parse_vals(i)
+                        settings = policy_settings(i)
                         settings['id'] = i['id']
                         settings['summary'] = i['summary']
 
@@ -82,7 +46,7 @@ class EditorAPI(TIOEndpoint):
 
                         if item['name'] not in resp[dtype['name']]:
                             # if the data subtype doesn't exist yet,
-                            # create it. 
+                            # create it.
                             resp[dtype['name']][item['name']] = list()
 
                         # Add the configured settings to the key-value
@@ -96,7 +60,7 @@ class EditorAPI(TIOEndpoint):
         settings for a given policy/scan
         '''
         resp = {
-            'custom': dict(),
+            'custom': list(),
             'feed': dict()
         }
 
@@ -125,9 +89,9 @@ class EditorAPI(TIOEndpoint):
                             resp['feed'][atype['name']] = list()
                         resp['feed'][atype['name']].append({
                             'id': audit['id'],
-                            'variables': self.parse_vals(audit)
+                            'variables': policy_settings(audit)
                         })
-        return resp 
+        return resp
 
     def parse_plugins(self, families, id, callfmt='editor/{id}/families/{fam}'):
         '''
@@ -164,7 +128,7 @@ class EditorAPI(TIOEndpoint):
         '''
         Retrieves an audit file from Tenable.io
 
-        `editor: audits <https://cloud.tenable.com/api#/resources/editor/audits>`_
+        :devportal:`editor: audits <editor-audits>`
 
         Args:
             etype (str):
@@ -179,7 +143,8 @@ class EditorAPI(TIOEndpoint):
                 provided a BytesIO object will be returned.
 
         Returns:
-            FileObject: A File-like object of of the audit file.
+            :obj:`file`:
+                A File-like object of of the audit file.
         '''
         # If no file object was given to us, then lets create a new BytesIO
         # object to dump the data into.
@@ -199,15 +164,16 @@ class EditorAPI(TIOEndpoint):
             if chunk:
                 fobj.write(chunk)
         fobj.seek(0)
+        resp.close()
 
         # lastly return the file object.
         return fobj
 
-    def details(self, etype, uuid):
+    def template_details(self, etype, uuid):
         '''
-        Retrieves details about a specific object.
+        Retrieves details about a specific template.
 
-        `editor: details <https://cloud.tenable.com/api#/resources/editor/details>`_
+        :devportal:`editor: template-details <editor-template-details>`
 
         Args:
             etype (str):
@@ -217,7 +183,8 @@ class EditorAPI(TIOEndpoint):
                 The UUID (unique identifier) for the template.
 
         Returns:
-            dict: Details on the requested template
+            :obj:`dict`:
+                Details on the requested template
         '''
         return self._api.get(
             'editor/{}/templates/{}'.format(
@@ -225,11 +192,11 @@ class EditorAPI(TIOEndpoint):
                 self._check('uuid', uuid, str)
             )).json()
 
-    def edit(self, etype, id):
+    def obj_details(self, etype, id):
         '''
-        Edits an object.
+        Retrieves details about a specific object.
 
-        `editor: edit <https://cloud.tenable.com/api#/resources/editor/edit>`_
+        :devportal:`editor: template-details <editor-template-details>`
 
         Args:
             etype (str):
@@ -239,19 +206,21 @@ class EditorAPI(TIOEndpoint):
                 The unique identifier of the object.
 
         Returns:
-            dict: Details of the requested object
+            :obj:`dict`:
+                Details of the requested object
         '''
         return self._api.get(
             'editor/{}/{}'.format(
-                self._check('etype', etype, str, choices=['scan', 'policy']),
+                self._check('etype', etype, str,
+                    choices=['scan', 'policy', 'scan/policy']),
                 self._check('id', id, int)
             )).json()
 
-    def list(self, etype):
+    def template_list(self, etype):
         '''
-        List objects.
+        List template objects.
 
-        `editor: list <https://cloud.tenable.com/api#/resources/editor/list>`_
+        :devportal:`editor: list <editor-list-templates>`
 
         Args:
             etype (str):
@@ -259,7 +228,8 @@ class EditorAPI(TIOEndpoint):
                 ``policy``.
 
         Returns:
-            list: Listing of template records.
+            :obj:`list`:
+                Listing of template records.
         '''
         return self._api.get(
             'editor/{}/templates'.format(
@@ -270,7 +240,7 @@ class EditorAPI(TIOEndpoint):
         '''
         Retrieves the plugin description for the specified plugin.
 
-        `editor: plugin-description <https://cloud.tenable.com/api#/resources/editor/plugin-description>`_
+        :devportal:`editor: plugin-description <editor-plugin-description>`
 
         Args:
             policy_id (int):
@@ -281,7 +251,8 @@ class EditorAPI(TIOEndpoint):
                 The identifier of the plugin within the family.
 
         Returns:
-            dict: Details of the plugin requested.
+            :obj:`dict`:
+                Details of the plugin requested.
         '''
         return self._api.get(
             'editor/policy/{}/families/{}/plugins/{}'.format(
@@ -289,3 +260,97 @@ class EditorAPI(TIOEndpoint):
                 self._check('family_id', family_id, int),
                 self._check('plugin_id', plugin_id, int)
             )).json()['plugindescription']
+
+    def details(self, etype, id):
+        '''
+        Constructs a valid scan document from the specified item.
+
+        .. important::
+            Please note that the details method is reverse-engineered from the
+            responses from the editor API, and while we are reasonably sure that
+            the response should align almost exactly to what the API expects to
+            be pushed to it, this method by very nature of what it's doing isn't
+            guaranteed to always work.
+
+        Args:
+            etype (str): The type of object to request.
+            scan_id (int): The unique identifier for the scan.
+
+        Returns:
+            :obj:`dict`:
+                The constructed scan configuration resource.
+
+        Examples:
+            >>> policy = tio.editor.details('scan', 1)
+            >>> pprint(scan)
+        '''
+
+        # Get the editor object
+        editor = self.obj_details(etype, id)
+
+        # define the initial skeleton of the scan object
+        obj = {
+            'settings': policy_settings(editor['settings']),
+            'uuid': editor['uuid']
+        }
+
+        # graft on the basic settings that aren't stored in any input sections.
+        for item in editor['settings']['basic']['groups']:
+            for setting in item.keys():
+                if setting not in ['name', 'title', 'inputs', 'sections']:
+                    obj['settings'][setting] = item[setting]
+
+        if 'credentials' in editor:
+            # if the credentials sub-document exists, then lets walk down the
+            # credentials dataset
+            obj['credentials'] = {
+                'current': self._api.editor.parse_creds(
+                    editor['credentials']['data'])
+            }
+
+            # We also need to gather the settings from the various credential
+            # settings that are unique to the scan.
+            for ctype in editor['credentials']['data']:
+                for citem in ctype['types']:
+                    if 'settings' in citem and citem['settings']:
+                        obj['settings'] = dict_merge(
+                            obj['settings'], policy_settings(
+                                citem['settings']))
+
+        if 'compliance' in editor:
+            # if the audits sub-document exists, then lets walk down the
+            # audits dataset.
+            obj['compliance'] = {
+                'current': self._api.editor.parse_audits(
+                    editor['compliance']['data'])
+            }
+
+            # We also need to add in the "compliance" settings into the scan
+            # settings.
+            for item in editor['compliance']['data']:
+                if 'settings' in item:
+                    obj['settings'] = dict_merge(
+                        obj['settings'], policy_settings(
+                            item['settings']))
+
+        if 'plugins' in editor:
+            # if the plugins sub-document exists, then lets walk down the
+            # plugins dataset.
+            obj['plugins'] = self._api.editor.parse_plugins(
+                editor['plugins']['families'], id)
+
+        # We next need to do a little post-parsing of the ACLs to find the
+        # owner and put owner_id attribute into the appropriate location.
+        if 'acls' in obj['settings'] and isinstance(obj['settings']['acls'], list):
+            for acl in obj['settings']['acls']:
+                if acl['owner'] == 1:
+                    obj['settings']['owner_id'] = acl['id']
+
+        # Clean out the empty attributes for templates:
+        if etype == 'scan/policy':
+            for key in list(obj['settings'].keys()):
+                if obj['settings'][key] == None:
+                    del(obj['settings'][key])
+
+        # return the scan document to the caller.
+        return obj

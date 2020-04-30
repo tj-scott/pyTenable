@@ -32,9 +32,9 @@ def test_assets_import_assets_typeerror(api):
 def test_assets_import_source_typeerror(api):
     with pytest.raises(TypeError):
         api.assets.asset_import(1, {
-            'fqdn': ['example.py.test'], 
-            'ipv4': ['192.168.254.1'], 
-            'netbios_name': '', 
+            'fqdn': ['example.py.test'],
+            'ipv4': ['192.168.254.1'],
+            'netbios_name': '',
             'mac_address': []
         })
 
@@ -42,18 +42,18 @@ def test_assets_import_source_typeerror(api):
 def test_assets_import_standard_user_permissionerror(stdapi):
     with pytest.raises(PermissionError):
         stdapi.assets.asset_import( 'pytest', {
-            'fqdn': ['example.py.test'], 
-            'ipv4': ['192.168.254.1'], 
-            'netbios_name': '', 
+            'fqdn': ['example.py.test'],
+            'ipv4': ['192.168.254.1'],
+            'netbios_name': '',
             'mac_address': []
-        })   
+        })
 
 @pytest.mark.vcr()
 def test_assets_import(api):
     resp = api.assets.asset_import('pytest', {
-        'fqdn': ['example.py.test'], 
-        'ipv4': ['192.168.254.1'], 
-        'netbios_name': '', 
+        'fqdn': ['example.py.test'],
+        'ipv4': ['192.168.254.1'],
+        'netbios_name': '',
         'mac_address': []
     })
     single(resp, 'uuid')
@@ -92,3 +92,28 @@ def test_assets_import_job_info(api):
         check(job, 'status_message', str)
         check(job, 'uploaded_assets', int)
         assert job['job_id'] == jobs[0]['job_id']
+
+@pytest.mark.vcr()
+def test_assets_tags_uuid_typeerror(api):
+    with pytest.raises(TypeError):
+        api.assets.tags(1)
+
+@pytest.mark.vcr()
+def test_assets_tags_uuid_unexpectedvalueerror(api):
+    with pytest.raises(UnexpectedValueError):
+        api.assets.tags('somethign else')
+
+@pytest.mark.vcr()
+def test_workbenches_asset_delete_asset_uuid_typeerror(api):
+    with pytest.raises(TypeError):
+        api.workbenches.asset_delete(1)
+
+@pytest.mark.vcr()
+def test_workbenches_asset_delete_success(api):
+    asset = api.workbenches.assets()[0]
+    api.workbenches.asset_delete(asset['id'])
+
+@pytest.mark.vcr()
+def test_assign_tags(api):
+    with pytest.raises(UnexpectedValueError):
+        api.assets.assign_tags('foo', [], [])

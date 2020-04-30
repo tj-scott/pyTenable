@@ -2,15 +2,13 @@
 scan_instances
 ==============
 
-NOTE: not currently tested code.
-
-The following methods allow for interaction into the Tenable.sc 
-`Scan Result <https://docs.tenable.com/sccv/api/Scan-Result.html>`_ API.  While
-the Tenable.sc API refers to the model these endpoints interact with as 
-*ScanResult*, were actually interacting with an instance of a scan definition
-stored within the *Scan* API endpoints.  These scan instances could be running
-scans, stopped scans, errored scans, or completed scans.  These items are
-typically seen under the **Scan Results** section of Tenable.sc.
+The following methods allow for interaction into the Tenable.sc
+:sc-api:`Scan Result <Scan-Result.html>` API.  While the Tenable.sc API refers
+to the model these endpoints interact with as *ScanResult*, were actually
+interacting with an instance of a scan definition stored within the *Scan* API
+endpoints.  These scan instances could be running scans, stopped scans, errored
+scans, or completed scans.  These items are typically seen under the
+**Scan Results** section of Tenable.sc.
 
 Methods available on ``sc.scan_instances``:
 
@@ -20,7 +18,7 @@ Methods available on ``sc.scan_instances``:
     .. automethod:: copy
     .. automethod:: delete
     .. automethod:: details
-    .. .. automethod:: email
+    .. automethod:: email
     .. automethod:: export_scan
     .. automethod:: import_scan
     .. automethod:: list
@@ -34,27 +32,27 @@ from tenable.utils import dict_merge
 from io import BytesIO
 
 class ScanResultAPI(SCEndpoint):
-    def copy(self, id, users=None):
+    def copy(self, id, *users):
         '''
         Clones the scan instance.
 
-        + `SC ScanResult Copy <https://docs.tenable.com/sccv/api/Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/copy>`_
+        :sc-api:`scan-result: copy <Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/copy>`
 
         Args:
             id (int): The identifier of the scan instance to clone.
-            users (list, optional): 
-                A list of user ids to associate to the scan instance.
+            *users (int):
+                A user id to associate to the scan instance.
 
         Returns:
-            dict
+            :obj:`dict`:
+                The cloned scan instance record.
 
         Examples:
             >>> sc.scan_instances.copy(1)
         '''
         payload = dict()
         if users:
-            payload['users'] = [{'id': self_check('user:id', u, int)} 
-                for u in self._check('users', users, list)]
+            payload['users'] = [{'id': self._check('user:id', u, int)} for u in users]
         return self._api.post('scanResult/{}/copy'.format(
             self._check('id', id, int)), json=payload).json()['response']
 
@@ -62,13 +60,14 @@ class ScanResultAPI(SCEndpoint):
         '''
         Removes the scan instance from TenableSC.
 
-        + `SC ScanResult Delete <https://docs.tenable.com/sccv/api/Scan-Result.html#scanResult_id_DELETE>`_
+        :sc-api:`scan-result: delete <Scan-Result.html#scanResult_id_DELETE>`
 
         Args:
             id (int): The identifier of the scan instance to delete.
 
         Returns:
-            dict
+            :obj:`str`:
+                An empty string.
 
         Examples:
             >>> sc.scan_instances.delete(1)
@@ -80,19 +79,20 @@ class ScanResultAPI(SCEndpoint):
         '''
         Retreives the details for the specified scan instance.
 
-        + `SC ScanResult <https://docs.tenable.com/sccv/api/Scan-Result.html#scanResult_id_GET>`_
+        :sc-api:`scan-result: details <Scan-Result.html#scanResult_id_GET>`
 
         Args:
             id (int): The identifier for the scan instance to be retrieved.
-            fields (list, optional): 
+            fields (list, optional):
                 List of fields to return.  Refer to the API documentation
                 referenced above for a list of available fields.
 
         Returns:
-            dict: The scan instance resource record.
+            :obj:`dict`:
+                The scan instance resource record.
 
         Examples:
-            Getting the details of a scan instance with just the 
+            Getting the details of a scan instance with just the
             default parameters:
 
             >>> scan = sc.scan_instances.details(1)
@@ -100,43 +100,44 @@ class ScanResultAPI(SCEndpoint):
 
             Specifying what fields you'd like to be returned:
 
-            >>> scan = sc.scan_instances.details(1, 
+            >>> scan = sc.scan_instances.details(1,
             ...     fields=['name', 'status', 'scannedIPs', 'startTime', 'finishTime'])
             >>> pprint(scan)
         '''
         params = dict()
         if fields:
-            params['fields'] = ','.join([self._check('field', f, str) 
+            params['fields'] = ','.join([self._check('field', f, str)
                 for f in self._check('fields', fields, list)])
         return self._api.get('scanResult/{}'.format(self._check('id', id, int)),
             params=params).json()['response']
 
     def email(self, id, *emails):
         '''
-        DOC-ISSUE: SC Api Docs do not explain what this does.
+        Emails the scan results of the requested scan to the email addresses
+        defined.
 
-        + `SC ScanResult Email <https://docs.tenable.com/sccv/api/Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/email>`_
+        :sc-api:`scan-result: email <Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/email>`
 
         Args:
             id (int): The identifier for the specified scan instance.
-            *emails (str): Valid email
+            *emails (str): Valid email address.
 
         Returns:
-            dict
+            :obj:`str`:
+                Empty string response.
 
         Examples:
-            >>> sc.scan_instances.email(1, )
+            >>> sc.scan_instances.email(1, 'email@company.tld')
         '''
         return self._api.post('scanResult/{}/email'.format(
             self._check('id', id, int)), json={'email': ','.join(
-                [self._check('address', e, str) 
-                    for e in self._check('emails', emails, list)])}).json()['response']
+                [self._check('address', e, str) for e in emails])}).json()['response']
 
     def export_scan(self, id, fobj=None, export_format=None):
         '''
         Downloads the results of the scan.
 
-        + `SC ScanResult Download <https://docs.tenable.com/sccv/api/Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/download>`_
+        :sc-api:`scan-result: download <Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/download>`
 
         Args:
             id (int): The scan instance identifier.
@@ -153,11 +154,12 @@ class ScanResultAPI(SCEndpoint):
                 actual file-object to write to instead.
 
         Returns:
-            FileObject: The file-like object with the resulting export.
+            :obj:`FileObject`:
+                The file-like object with the resulting zipped report.
 
         Examples:
-            >>> with open('example.nessus', 'wb') as fobj:
-            ...     sc.scan_instances.export(1, fobj)
+            >>> with open('example.zip', 'wb') as fobj:
+            ...     sc.scan_instances.export_scan(1, fobj)
         '''
         resp = self._api.post('scanResult/{}/download'.format(
             self._check('id', id, int)), stream=True, json={
@@ -174,13 +176,14 @@ class ScanResultAPI(SCEndpoint):
             if chunk:
                 fobj.write(chunk)
         fobj.seek(0)
+        resp.close()
         return fobj
 
     def import_scan(self, fobj, repo, **kw):
         '''
         Imports a nessus file into Tenable.sc.
 
-        + `SC Scan Import <https://docs.tenable.com/sccv/api/Scan-Result.html#ScanResultRESTReference-/scanResult/import>`_
+        :sc-api:`scan-result: import <Scan-Result.html#ScanResultRESTReference-/scanResult/import>`
 
         Args:
             fobj (FileObject):
@@ -188,7 +191,7 @@ class ScanResultAPI(SCEndpoint):
             repo (int):
                 The repository id for the scan.
             auto_mitigation (int, optional):
-                How many days to hold on to data before mitigating it?  The 
+                How many days to hold on to data before mitigating it?  The
                 default value is 0.
             host_tracking (bool, optional):
                 Should DHCP host tracking be enabled?  The default is False.
@@ -197,7 +200,8 @@ class ScanResultAPI(SCEndpoint):
                 is ``False``.
 
         Returns:
-            str: An emty string response.
+            :obj:`str`:
+                An empty string response.
 
         Examples:
             >>> with open('example.nessus') as fobj:
@@ -213,13 +217,13 @@ class ScanResultAPI(SCEndpoint):
         '''
         Re-imports an existing scan into the cumulative repository.
 
-        + `SC Scan Re-Import <https://docs.tenable.com/sccv/api/Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/import>`_
+        :sc-api:`scan-result: re-import <Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/import>`
 
         Args:
             id (int):
                 The scan instance identifier.
             auto_mitigation (int, optional):
-                How many days to hold on to data before mitigating it?  The 
+                How many days to hold on to data before mitigating it?  The
                 default value is 0.
             host_tracking (bool, optional):
                 Should DHCP host tracking be enabled?  The default is False.
@@ -228,36 +232,50 @@ class ScanResultAPI(SCEndpoint):
                 is ``False``.
 
         Returns:
-            str: An emty string response.
+            :obj:`str`:
+                An empty string response.
 
         Examples:
             >>> sc.scan_instances.reimport_scan(1)
         '''
-        payload = self._api.scans._constructor(kw)
+        payload = self._api.scans._constructor(**kw)
         return self._api.post('scanResult/{}/import'.format(self._check(
             'id', id, int)), json=payload).json()['response']
 
-    def list(self, fields=None):
+    def list(self, fields=None, start_time=None, end_time=None):
         '''
-        Retreives the list of scan instances.
+        Retrieves the list of scan instances.
 
-        + `SC ScanResult List <https://docs.tenable.com/sccv/api/Scan-Result.html#ScanResultRESTReference-/scanResult>`_
+        :sc-api:`scan-result: list <Scan-Result.html#ScanResultRESTReference-/scanResult>`
 
         Args:
-            fields (list, optional): 
+            fields (list, optional):
                 A list of attributes to return.
+            start_time (int, optional):
+                Epoch time to start search (searches against createdTime and defaults to now-30d)
+            end_time (int, optional):
+                Epoch time to end search (searches against createdTime and defaults to now)
 
         Returns:
-            list: A list of scan instance resources.
+            :obj:`dict`:
+                A list of scan instance resources.
 
         Examples:
-            >>> for scan in sc.scan_instances.list():
+            * Retreiving all of the manageable scans instances:
+
+            >>> for scan in sc.scan_instances.list()['manageable']:
             ...     pprint(scan)
         '''
         params = dict()
         if fields:
-            params['fields'] = ','.join([self._check('field', f, str) 
+            params['fields'] = ','.join([self._check('field', f, str)
                 for f in fields])
+
+        if start_time:
+            params['startTime'] = self._check('start_time', start_time, int)
+
+        if end_time:
+            params['endTime'] = self._check('end_time', end_time, int)
 
         return self._api.get('scanResult', params=params).json()['response']
 
@@ -266,51 +284,54 @@ class ScanResultAPI(SCEndpoint):
         Pauses a running scan instance.  Note that this will not impact agent
         scan instances.
 
-        + SC Scan Pause <https://docs.tenable.com/sccv/api/Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/pause>`_
+        "sc-api:`scan-result: pause <Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/pause>`
 
         Args:
             id (int): The unique identifier for the scan instance.
 
         Returns:
-            list: List of scan instances modified.
+            :obj:`dict`:
+                The Scan instance state
 
         Examples:
             >>> sc.scan_instances.pause(1)
         '''
         return self._api.post('scanResult/{}/pause'.format(self._check(
-            'id', id, int))).json()['response']['scanResults']
+            'id', id, int))).json()['response']
 
     def resume(self, id):
         '''
         Resumes a paused scan instance.  Note that this will not impact agent
         scan instances.
 
-        + SC Scan Resume <https://docs.tenable.com/sccv/api/Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/resume>`_
+        :sc-api:`scan-result: resume <Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/resume>`
 
         Args:
             id (int): The unique identifier for the scan instance.
 
         Returns:
-            list: List of scan instances modified.
+            :obj:`dict`:
+                The Scan instance state
 
         Examples:
             >>> sc.scan_instances.resume(1)
         '''
         return self._api.post('scanResult/{}/resume'.format(self._check(
-            'id', id, int))).json()['response']['scanResults']
+            'id', id, int))).json()['response']
 
     def stop(self, id):
         '''
         Stops a running scan instance.  Note that this will not impact agent
         scan instances.
 
-        + SC Scan Stop <https://docs.tenable.com/sccv/api/Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/stop>`_
+        :sc-api:`scan-result: stop <Scan-Result.html#ScanResultRESTReference-/scanResult/{id}/stop>`
 
         Args:
             id (int): The unique identifier for the scan instance.
 
         Returns:
-            dict: Response dictionary
+            :obj:`dict`:
+                The Scan instance state
 
         Examples:
             >>> sc.scan_instances.stop(1)
